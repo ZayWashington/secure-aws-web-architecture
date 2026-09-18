@@ -1,0 +1,128 @@
+# Security Decisions
+ 
+This document summarizes the primary security design decisions implemented in the Secure AWS Web Architecture project.
+ 
+## 1. Minimize Public Exposure
+ 
+Only the Application Load Balancer is intentionally internet-facing.
+ 
+The EC2 application instances and Amazon RDS database do not have public IPv4 addresses and reside in private subnets.
+ 
+**Reason:** Reduce attack surface and prevent direct access to application and database workloads.
+ 
+---
+ 
+## 2. Eliminate Inbound SSH
+ 
+Administrative access to EC2 is performed through AWS Systems Manager Session Manager.
+ 
+No inbound TCP/22 rule is required.
+ 
+**Reason:** Avoid exposing SSH to the internet and eliminate dependency on SSH key pairs.
+ 
+---
+ 
+## 3. Use Security Group Referencing
+ 
+Traffic between application tiers is controlled using chained security-group references:
+ 
+- Internet → ALB security group on HTTP/80
+- ALB security group → application security group on HTTP/80
+- Application security group → database security group on MySQL/3306
+ 
+**Reason:** Limit access based on workload identity rather than broad CIDR-based rules.
+ 
+---
+ 
+## 4. Use Workload IAM Roles
+ 
+EC2 instances use an IAM role for access to AWS services.
+ 
+The application role includes:
+ 
+- AWS Systems Manager permissions
+- Permission to retrieve the required database secret
+ 
+Broad administrative policies were not attached to the workload role.
+ 
+**Reason:** Avoid static credentials and enforce least-privilege access.
+ 
+---
+ 
+## 5. Protect Database Credentials
+ 
+Amazon RDS master credentials are managed using AWS Secrets Manager.
+ 
+The application retrieves the secret programmatically through IAM permissions.
+ 
+**Reason:** Avoid embedding database passwords in scripts, files, or instance configuration.
+ 
+---
+ 
+## 6. Encrypt Sensitive Data
+ 
+Amazon RDS storage is encrypted with AWS KMS.
+ 
+CloudTrail log delivery also uses KMS-backed encryption.
+ 
+**Reason:** Protect sensitive data and audit records at rest.
+ 
+---
+ 
+## 7. Centralize Logging and Detection
+ 
+The architecture uses multiple complementary security services:
+ 
+- AWS CloudTrail for API audit logging
+- Amazon CloudWatch for operational monitoring
+- Amazon GuardDuty for managed threat detection
+- AWS Config for configuration and compliance evaluation
+- AWS WAF for application-layer protection
+ 
+**Reason:** No single service provides complete visibility. Layered telemetry improves detection and investigation capability.
+ 
+---
+ 
+## 8. Validate Security Controls
+ 
+Security controls were actively tested rather than assumed to work.
+ 
+Validation included:
+ 
+- ALB backend failover
+- CloudWatch alarm transition and SNS notification
+- Private EC2-to-RDS connectivity
+- Authenticated MySQL operations
+- AWS Config compliance evaluation
+- AWS WAF SQL injection blocking
+- GuardDuty sample-finding triage
+ 
+**Reason:** Configuration alone does not prove effectiveness.
+ 
+---
+ 
+## 9. Cost-Conscious Lab Design
+ 
+The project used a single NAT Gateway and a limited AWS Config rule set.
+ 
+Premium WAF protections were intentionally avoided.
+ 
+A recurring AWS Budget was configured to monitor spending.
+ 
+**Reason:** Balance security learning objectives with responsible cloud cost management.
+ 
+---
+ 
+## 10. Production Improvements
+ 
+A production implementation could further improve resilience and security by adding:
+ 
+- One NAT Gateway per Availability Zone
+- HTTPS with AWS Certificate Manager
+- Route 53 DNS
+- Auto Scaling
+- VPC endpoints for AWS services
+- More restrictive outbound security-group controls
+- Infrastructure as Code with Terraform
+- Centralized multi-account logging
+- Additional Config rules and Security Hub integration
