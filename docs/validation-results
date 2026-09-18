@@ -1,0 +1,57 @@
+# Security Validation Results
+ 
+This document summarizes the validation activities performed against the Secure AWS Web Architecture.
+ 
+The objective was to verify that security, availability, monitoring, and compliance controls operated as designed rather than relying solely on configuration review.
+ 
+---
+ 
+## Validation Summary
+ 
+| Control | Validation Method | Result |
+|---|---|---|
+| Public application access | Accessed application through public ALB | PASS |
+| AWS WAF normal traffic | Sent legitimate HTTP requests | PASS — Allowed |
+| AWS WAF SQL injection protection | Sent controlled SQLi-shaped request | PASS — HTTP 403 |
+| Multi-AZ application health | Verified both ALB targets | PASS — Both healthy |
+| Application failover | Stopped one EC2 backend | PASS — Application remained available |
+| EC2 public exposure | Reviewed instance networking | PASS — No public IPv4 |
+| SSH exposure | Reviewed security groups | PASS — No inbound TCP/22 |
+| Private administration | Connected through Session Manager | PASS |
+| IMDSv2 | Reviewed instance metadata configuration | PASS — Required |
+| EC2 workload identity | Reviewed attached IAM role | PASS |
+| Secrets Manager access | Retrieved DB secret through EC2 role | PASS |
+| Database network path | Tested TCP/3306 from private EC2 | PASS |
+| Database authentication | Authenticated to MySQL | PASS |
+| Database operation | Created, inserted, and queried validation data | PASS |
+| RDS public accessibility | Reviewed RDS networking | PASS — Disabled |
+| RDS encryption | Reviewed KMS configuration + AWS Config | PASS |
+| CloudTrail logging | Generated/reviewed management events | PASS |
+| CloudTrail S3 delivery | Verified CloudTrail and digest objects | PASS |
+| CloudTrail encryption | Evaluated with AWS Config | PASS |
+| CloudWatch health monitoring | Simulated backend failure | PASS |
+| SNS notification | Verified alarm email delivery | PASS |
+| GuardDuty | Generated and investigated AWS sample finding | PASS |
+| S3 account public access | Evaluated and hardened control | PASS |
+| AWS Config | Evaluated six managed rules | PASS — 6/6 compliant |
+ 
+---
+ 
+## Network Segmentation Validation
+ 
+The intended security-group trust chain was verified as:
+ 
+```text
+Internet
+   |
+   | HTTP :80
+   v
+ALB Security Group
+   |
+   | HTTP :80
+   v
+Application Security Group
+   |
+   | MySQL :3306
+   v
+Database Security Group
