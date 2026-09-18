@@ -1,0 +1,226 @@
+# Troubleshooting & Lessons Learned
+ 
+This project included controlled testing and troubleshooting across networking, identity, database connectivity, monitoring, compliance, and application security.
+ 
+The following examples document several of the most useful technical lessons from the build.
+ 
+---
+ 
+## 1. Private EC2 Could Not Access AWS Services
+ 
+### Problem
+ 
+The application instances were intentionally deployed without public IPv4 addresses.
+ 
+Private workloads still required outbound connectivity for package installation, Systems Manager communication, and other AWS service access.
+ 
+### Investigation
+ 
+I reviewed:
+ 
+- Private subnet route tables
+- Internet Gateway connectivity
+- NAT Gateway placement
+- Security group configuration
+- Instance addressing
+ 
+### Resolution
+ 
+A NAT Gateway was deployed in a public subnet and the private application route table was configured to use it for outbound internet traffic.
+ 
+### Lesson
+ 
+A private subnet is defined primarily by its routing behavior, not simply by whether an instance has a public IP address.
+ 
+---
+ 
+## 2. Secure EC2 Administration Without SSH
+ 
+### Problem
+ 
+The EC2 application servers needed administrative access while remaining private.
+ 
+Opening TCP/22 to the internet would have weakened the architecture.
+ 
+### Resolution
+ 
+I configured:
+ 
+- An EC2 IAM role
+- `AmazonSSMManagedInstanceCore`
+- AWS Systems Manager Session Manager
+- IMDSv2
+ 
+This allowed shell access without public IP addresses, SSH keys, or an inbound SSH security-group rule.
+ 
+### Lesson
+ 
+Systems Manager provides a strong administrative-access pattern for private AWS workloads and reduces externally exposed management services.
+ 
+---
+ 
+## 3. Private EC2-to-RDS Connectivity
+ 
+### Problem
+ 
+The application tier needed access to the private MySQL database without exposing RDS publicly.
+ 
+### Investigation
+ 
+I validated the connection in layers:
+ 
+1. Retrieved the database secret using the EC2 IAM role.
+2. Verified the RDS hostname.
+3. Tested TCP/3306 reachability.
+4. Authenticated with the MySQL client.
+5. Queried the database.
+6. Created and queried a validation table.
+ 
+### Result
+ 
+The test returned:
+ 
+`Private EC2 to RDS connection successful`
+ 
+### Lesson
+ 
+Troubleshooting connectivity is more effective when separating DNS, network reachability, authentication, and application/database behavior into individual tests.
+ 
+---
+ 
+## 4. Application Load Balancer Failover
+ 
+### Test
+ 
+One EC2 application server was intentionally stopped to simulate a backend failure.
+ 
+### Result
+ 
+The Application Load Balancer detected the unhealthy target and removed it from service.
+ 
+The remaining healthy application server in the second Availability Zone continued serving requests.
+ 
+### Lesson
+ 
+High availability should be tested through controlled failure rather than inferred from architecture alone.
+ 
+---
+ 
+## 5. CloudWatch Alarm Returned to OK Before Screenshot Capture
+ 
+### Problem
+ 
+During the controlled backend failure, the CloudWatch alarm successfully entered the ALARM state and generated an SNS email notification.
+ 
+The backend recovered before I captured the live ALARM-state screenshot.
+ 
+### Investigation
+ 
+Instead of repeating the failure solely for a screenshot, I reviewed the CloudWatch alarm history.
+ 
+### Result
+ 
+Alarm history preserved the complete sequence:
+ 
+`OK → ALARM → SNS action → OK`
+ 
+### Lesson
+ 
+Monitoring history can provide stronger evidence than a point-in-time screenshot because it documents the complete detection and recovery lifecycle.
+ 
+---
+ 
+## 6. AWS Config S3 Rule Had No Evaluation Result
+ 
+### Problem
+ 
+The AWS Config rule:
+ 
+`s3-account-level-public-access-blocks`
+ 
+initially returned no compliance result.
+ 
+### Investigation
+ 
+I inspected the underlying Amazon S3 account-level Block Public Access configuration.
+ 
+The account-level protection was disabled.
+ 
+### Resolution
+ 
+Account-level S3 Block Public Access was enabled.
+ 
+AWS Config subsequently reevaluated the control as:
+ 
+`COMPLIANT`
+ 
+### Lesson
+ 
+Compliance findings should be investigated at the underlying control rather than treated as dashboard-only issues.
+ 
+This test resulted in an actual security-hardening improvement to the environment.
+ 
+---
+ 
+## 7. CloudTrail Encryption Rule Was Missing
+ 
+### Problem
+ 
+`cloud-trail-encryption-enabled` was selected during initial AWS Config setup but did not appear in the active rule list.
+ 
+### Resolution
+ 
+I manually added the AWS-managed rule and allowed AWS Config to evaluate the existing CloudTrail configuration.
+ 
+### Result
+ 
+The rule returned:
+ 
+`COMPLIANT`
+ 
+### Lesson
+ 
+Deployment review screens do not replace post-deployment validation. Security controls should be verified after creation.
+ 
+---
+ 
+## 8. AWS WAF SQL Injection Validation
+ 
+### Test
+ 
+AWS WAF was associated with the public Application Load Balancer and configured with managed protections including:
+ 
+- Core Rule Set
+- Known Bad Inputs
+- SQL Injection Rule Set
+- Source-IP rate limiting
+ 
+A controlled SQL-injection-shaped HTTP request was sent to the application.
+ 
+### Result
+ 
+The request returned:
+ 
+`HTTP 403 Forbidden`
+ 
+WAF telemetry showed that `AWSManagedRulesSQLiRuleSet` blocked the request while legitimate requests remained allowed.
+ 
+### Lesson
+ 
+Security controls are more meaningful when their enforcement behavior and telemetry are both validated.
+ 
+---
+ 
+## Key Takeaways
+ 
+The project reinforced several troubleshooting principles:
+ 
+- Test one layer at a time.
+- Validate routing before blaming the application.
+- Separate network reachability from authentication.
+- Use service history and logs as evidence.
+- Investigate compliance findings at the underlying resource.
+- Test resilience through controlled failure.
+- Verify security controls after deployment.
+- Prefer private administrative-access patterns over exposed management ports.
+- Document both successful configurations and the reasoning behind fixes.
